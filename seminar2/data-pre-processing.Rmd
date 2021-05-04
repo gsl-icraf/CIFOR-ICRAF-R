@@ -1,0 +1,162 @@
+---
+title: "R Notebook"
+output: html_notebook
+author: "Jason kinyua"
+date: "April 28, 2021"
+---
+
+
+```{r confirmed.cases.data}
+# read global dataset
+confirmed.cases = read.csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv', header=TRUE )
+# preview first 5 rows
+confirmed.cases[1:5,]
+```
+```{r kenya.filter}
+# filter the dataset where Country.Region is Kenya
+# drop Lat, Long, Province.State and Country.Region columns
+confirmed.cases.kenya <- subset(
+  confirmed.cases, 
+  Country.Region == "Kenya", 
+  select = - c(Lat, Long, Province.State, Country.Region)
+)
+# install reshape library if missing
+# install.packages('reshape2', repos='https://cloud.r-project.org', deps=TRUE)
+# reshape the dataframe using reshape2::melt method
+confirmed.cases.kenya <- reshape2::melt(
+  confirmed.cases.kenya, 
+  variable.name = "Date", 
+  value.name = "Total.Confirmed"
+)
+confirmed.cases.kenya[1:5,]
+```
+
+```{r transform.data}
+# cast Date column to date type
+confirmed.cases.kenya$Date <- as.Date(confirmed.cases.kenya$Date, format="X%m.%d.%Y")
+# remove rows where cumulative confirmed cases = 0
+confirmed.cases.kenya <- subset(confirmed.cases.kenya, Total.Confirmed > 0)
+# Compute daily confirmed cases from cumulative sum entries
+confirmed.cases.kenya$Daily.Confirmed = c(
+  confirmed.cases.kenya$Total.Confirmed[1], 
+  diff(confirmed.cases.kenya$Total.Confirmed)
+)
+head(confirmed.cases.kenya)
+```
+```{r preprocess.rest.of.data}
+# repeat same procedure as above for recoveries and deaths
+# Pre-process death cases data
+recovery.cases <- read.csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv')
+recovery.cases.kenya <- subset(
+  recovery.cases, 
+  Country.Region == 'Kenya', 
+  select = -c(Lat, Long, Province.State, Country.Region)
+)
+recovery.cases.kenya <- reshape2::melt(
+  recovery.cases.kenya, 
+  variable.name="Date", 
+  value.name = "Total.Recoveries"
+)
+recovery.cases.kenya$Daily.Recoveries = c(
+  recovery.cases.kenya$Total.Recoveries[1], 
+  diff(recovery.cases.kenya$Total.Recoveries)
+)
+recovery.cases.kenya$Date <- as.Date(recovery.cases.kenya$Date, format="X%m.%d.%Y")
+# filter cases not earlier than when first case was reported in the country
+recovery.cases.kenya <- subset(recovery.cases.kenya, Date >= confirmed.cases.kenya$Date[1])
+
+# Pre-process death cases data
+death.cases <- read.csv('https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv')
+death.cases.kenya <- subset(
+  death.cases, 
+  Country.Region == 'Kenya', 
+  select = -c(Lat, Long,Province.State , Country.Region)
+)
+death.cases.kenya <- reshape2::melt(
+  death.cases.kenya, 
+  variable.name="Date", 
+  value.name = "Total.Deaths"
+)
+death.cases.kenya$Daily.Deaths = c(
+  death.cases.kenya$Total.Deaths[1], 
+  diff(death.cases.kenya$Total.Deaths)
+)
+death.cases.kenya$Date <- as.Date(death.cases.kenya$Date, format="X%m.%d.%Y")
+death.cases.kenya <- subset(death.cases.kenya, Date >= confirmed.cases.kenya$Date[1])
+
+# merge confirmed, recovery and death cases into a single data.frame
+covid19.cases.kenya <- merge.data.frame(confirmed.cases.kenya, recovery.cases.kenya, by.x="Date", by.y="Date", all = TRUE)
+covid19.cases.kenya <- merge.data.frame(covid19.cases.kenya, death.cases.kenya, all = TRUE)
+head(covid19.cases.kenya, n=5)
+```
+```{r save.to.file}
+write.csv(covid19.cases.kenya, file='code/data/covid19-cases-kenya.csv', row.names = FALSE)
+```
+
+```{r confirmed.cases.plot}
+library(ggplot2)
+
+
+ggplot(data = covid19.cases.kenya, mapping = aes(x = Date, y = Daily.Confirmed)) + 
+  geom_line(colour="blue", show.legend = FALSE) +
+  geom_point(colour="cyan", show.legend = FALSE) + 
+  labs(
+    title = "Daily Covid 19 Confirmed Cases in Kenya",
+    x = "Date",
+    y = "Confirmed Positive Cases"
+  ) + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+```{r confirmed.cases.distribution}
+ggplot(covid19.cases.kenya, aes(x = "Kenya", y = Daily.Confirmed)) +  
+  geom_boxplot(colour="cyan", show.legend = FALSE, outlier.color = "red") +
+  stat_summary(fun=mean, geom="point", shape=20, size=3, color="brown") +
+  labs(
+    title = "Distribution of Covid 19 Confirmed Cases",
+    x = "",
+    y = "Confirmed Cases"
+  ) + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r compare.daily.cases}
+# Remove outlier incidence with over 3,000 recoveries in a day
+cleaned.data <- subset(covid19.cases.kenya, Daily.Recoveries < 3000)
+colours <- c("Positive" = "cyan", "Recoveries" = "green", "Deaths" = "red")
+ggplot(data = cleaned.data, mapping = aes(x = Date)) + 
+  geom_line(aes(y = Daily.Confirmed, color = "Positive")) + 
+  geom_line(aes(y = Daily.Recoveries, color = "Recoveries")) + 
+  geom_line(aes(y = Daily.Deaths, color = "Deaths")) +
+  labs(
+    title = "A Comparison of Daily Confirmed Cases in Kenya",
+    x = "Date",
+    y = "Cases Count",
+    color = "Confirmed Cases"
+  ) + 
+  scale_color_manual(values = colours) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = c(.05, .95),
+    legend.justification = c("left", "top")
+  )
+```
+
+```{r compare.total.cases}
+
+ggplot(data = covid19.cases.kenya, mapping = aes(x = Date)) + 
+  geom_line(aes(y = Total.Confirmed, color = "Positive")) + 
+  geom_line(aes(y = Total.Recoveries, color = "Recoveries")) + 
+  geom_line(aes(y = Total.Deaths, color = "Deaths")) +
+  labs(
+    title = "A Comparison of Cumulative Confirmed Cases in Kenya",
+    x = "Date",
+    y = "Cumulative Cases",
+    color = 'Confirmed Cases'
+  ) + 
+  scale_color_manual(values = colours) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = c(.05, .95),
+    legend.justification = c("left", "top")
+  )
+```

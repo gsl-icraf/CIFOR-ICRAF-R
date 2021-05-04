@@ -1,1 +1,2 @@
-# CIFOR-ICRAF-R
+# CIFOR-ICRAF Shiny Seminars
+
