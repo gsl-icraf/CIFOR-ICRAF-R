@@ -1,0 +1,63 @@
+---
+title: "data wrangling script"
+author: "clinton"
+date: "6/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+```{r}
+library(dplyr)
+```
+
+import data
+```{r}
+covid19.data.kenya <- read.csv("data/covid19-cases-kenya.csv")
+```
+
+# convert the Date column to a date object
+
+```{r}
+
+covid19.data.kenya$Date <- as.Date(covid19.data.kenya$Date, format="%y-%m-%d")
+
+```
+
+# Total monthly confirmed cases
+ - Extract the year and months from the Date column  
+ - sum the cases by month  
+ - export the data file into the data folder as a csv  
+ 
+```{r}
+
+ monthly.cases.data <-  covid19.data.kenya %>% 
+      dplyr::mutate(year= format(covid19.data.kenya$Date, "%Y"), month=format(covid19.data.kenya$Date, "%B")) %>%
+    dplyr::group_by(year,month) %>%
+    dplyr::summarise(Monthly.Confirmed=sum(Daily.Confirmed)) %>% ungroup()
+    
+    
+  write.csv(monthly.cases.data,"data/monthly.cases.data.csv")  
+    
+```
+
+# Total monthly deaths
+ - Extract the year and months from the Date column  
+ - sum the cases by month  
+ - export the data file into the data folder as a csv  
+```{r}
+ monthly.deaths.data <- covid19.data.kenya %>% 
+      dplyr::mutate(year= format(covid19.data.kenya$Date, "%Y"), month=format(covid19.data.kenya$Date, "%B")) %>%
+      group_by(year,month) %>%
+      dplyr::summarise(Monthly.Deaths=sum(Daily.Deaths)) 
+    
+    
+    
+    write.csv(monthly.deaths.data,"data/monthly.deaths.data.csv")  
+```
+
+
+
